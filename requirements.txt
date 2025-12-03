@@ -1,0 +1,71 @@
+# Sistema Preditivo de Manutenção v2.0
+# Dependências Python
+
+# Core Data Science
+pandas>=2.0.0
+numpy>=1.24.0
+scipy>=1.10.0
+
+# Machine Learning
+scikit-learn>=1.3.0
+xgboost>=2.0.0
+lightgbm>=4.0.0
+catboost>=1.2.0
+imbalanced-learn>=0.11.0
+
+# AutoML (opcional - comentar se não usar)
+# h2o>=3.42.0
+# flaml>=2.0.0
+
+# Deep Learning (opcional - descomentar se usar)
+# tensorflow>=2.13.0
+# keras>=2.13.0
+
+# Explicabilidade
+shap>=0.42.0
+
+# Confiabilidade (opcional)
+# reliability>=0.8.0
+
+# Validação de Dados
+pandera>=0.15.0
+
+# Visualização
+plotly>=5.14.0
+matplotlib>=3.7.0
+seaborn>=0.12.0
+kaleido>=0.2.1  # Para exportar gráficos Plotly
+
+# Interface
+streamlit>=1.25.0
+
+# IA Generativa
+google-generativeai>=0.3.0
+# openai>=1.0.0  # Descomentar se usar OpenAI
+# anthropic>=0.3.0  # Descomentar se usar Claude
+
+# Configuração e I/O
+PyYAML>=6.0
+python-dotenv>=1.0.0
+openpyxl>=3.1.0
+joblib>=1.3.0
+
+# Logs e Monitoramento
+psutil>=5.9.0
+
+# Utilidades
+tqdm>=4.65.0
+requests>=2.31.0
+
+# Confiabilidade
+lifelines>=0.27.0
+
+# Automação e Relatórios
+schedule>=1.2.0
+jinja2>=3.1.0
+# weasyprint>=59.0  # Descomentar para PDF (requer GTK)
+
+# Testes (desenvolvimento)
+pytest>=7.4.0
+pytest-cov>=4.1.0
+pytest-benchmark>=4.0.0

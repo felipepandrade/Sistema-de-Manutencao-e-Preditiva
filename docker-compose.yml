@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sistema-preditivo
+    ports:
+      - "8501:8501"
+    volumes:
+      # Persistir dados e modelos
+      - ./data:/app/data
+      - ./outputs:/app/outputs
+      # Para desenvolvimento (comentar em produção)
+      # - ./src:/app/src
+      # - ./app.py:/app/app.py
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8501/_stcore/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    # Limites de recursos (ajustar conforme necessário)
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 8G
+        reservations:
+          cpus: '2'
+          memory: 4G
+
+networks:
+  default:
+    name: sistema-preditivo-network

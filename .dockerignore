@@ -1,0 +1,61 @@
+# .dockerignore
+# Arquivos e diretórios a ignorar no build do Docker
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Ambientes virtuais
+venv/
+env/
+ENV/
+
+# Jupyter
+*.ipynb_checkpoints/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Logs e outputs (usar volumes)
+outputs/logs/*
+outputs/models/*
+outputs/reports/*
+
+# Dados temporários
+data/processed/*
+*.tmp
+*.temp
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Documentação
+*.md
+docs/
+
+# Tests
+tests/
+pytest.ini
+.coverage
+
+# Brain artifacts (apenas para desenvolvimento)
+.gemini/

@@ -1,0 +1,158 @@
+# Sistema Preditivo de Manutenção v2.0
+# Configuração centralizada do sistema
+
+project:
+  name: "Predictive Maintenance System"
+  version: "2.0.0"
+  seed: 42
+
+paths:
+  data_raw: "data/raw"
+  data_processed: "data/processed"
+  features: "data/features"
+  models: "models"
+  outputs: "outputs"
+  logs: "outputs/logs"
+
+data:
+  # Colunas esperadas após padronização
+  required_columns:
+    falhas: ["ativo_unico", "data", "instalacao", "modulo_envolvido", "regional"]
+    pcm: ["ativo_unico", "data_de_abertura", "tipo_manutencao", "descricao"]
+  
+  # Estratégia de tratamento de valores faltantes
+  missing_strategy:
+    numeric: "zero"  # ou "mean", "median"
+    categorical: "unknown"
+
+features:
+  # Configuração do pipeline de features
+  lags: [1, 3, 6, 12]
+  rolling_windows: [3, 6, 12]
+  include_sazonalidade: true
+  include_interacoes: true
+  
+  # Features base para ML (excluindo metadados)
+  base_features:
+    - "tbf"
+    - "falhas_acumuladas"
+    - "idade_ativo_dias"
+    - "tbf_mean_3eventos"
+    - "tbf_std_3eventos"
+    - "mes_falha"
+    - "dia_semana_falha"
+
+models:
+  # Horizontes de predição (dias)
+  horizontes: [3, 7, 15, 30]
+  
+  # Split temporal (treino/val/teste)
+  split:
+    train: 0.6
+    val: 0.2
+    test: 0.2
+  
+  # AutoML
+  automl:
+    engine: "auto"  # "auto", "h2o", "flaml", "manual", "skip"
+    max_time_minutes: 5
+    memory_threshold_gb: 3.0  # Se < 3GB, não tenta H2O
+  
+  # Modelos clássicos a treinar
+  classical_models:
+    - "RandomForest"
+    - "XGBoost"
+    - "LightGBM"
+    - "GradientBoosting"
+    - "LogisticRegression"
+  
+  # Deep Learning
+  deep_learning:
+    enabled: true  # Habilitado para uso
+    min_samples: 100  # Treina DL somente se N >= 100
+    architecture: "lstm"  # "lstm", "gru", "bilstm"
+    timesteps: 5
+    epochs: 30
+    batch_size: 32
+    units: 64
+    dropout: 0.3
+    learning_rate: 0.001
+    early_stopping_patience: 5
+    use_class_weights: true
+  
+  # Calibração de probabilidades
+  calibration:
+    method: "sigmoid"  # ou "isotonic"
+    use_validation_set: true
+  
+  # Threshold optimization
+  threshold:
+    metric: "f1"  # Métrica para otimizar threshold
+    search_range: [0.05, 0.95]
+    num_steps: 19
+
+inference:
+  # Classificação de risco
+  risk_thresholds:
+    alto: 0.70
+    medio: 0.30
+  
+  # Intervalo de confiança
+  confidence_level: 0.95
+  bootstrap_iterations: 10  # Para IC empírico
+  
+  # Batch inference
+  chunk_size: 1000  # Processar N ativos por vez
+
+explainability:
+  # SHAP
+  shap:
+    n_samples: 50  # Quantidade de ativos para explicar
+    use_tree_explainer: true  # Mais rápido para RF/XGB/LGBM
+  
+  # Integrated Gradients (DL)
+  integrated_gradients:
+    steps: 32
+    target_horizon_days: 30  # Head padrão para explicar
+
+maintenance:
+  # Otimização de PM
+  pm_optimization:
+    ai_provider: "Gemini"  # "Gemini", "OpenAI", "Anthropic"
+    max_historico_linhas: 15
+  
+  # RCA (Root Cause Analysis)
+  rca:
+    metodologias: ["5 Porquês", "Ishikawa", "Pareto"]
+    zscore_threshold: 2.0
+    window_days: 7
+    use_ai_analysis: true
+    ai_provider: "gemini"  # "gemini" ou "openai"
+    enable_conversational_chat: true
+  
+  # Performance Tracker
+  performance:
+    enabled: true
+    detection_window_days: 7  # Previsto até X dias antes = acerto
+    metrics_to_track: ["f1", "precision", "recall", "auc"]
+    alert_threshold_drop: 0.05  # Alerta se F1 cair 5%
+    save_predictions_for_tracking: true
+
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "outputs/logs/app.log"
+  max_bytes: 10485760  # 10MB
+  backup_count: 5
+
+ui:
+  # Streamlit
+  page_title: "Sistema Preditivo de Manutenção"
+  layout: "wide"
+  initial_sidebar_state: "expanded"
+  
+  # Cores para classificação de risco
+  colors:
+    alto_risco: "#FF4444"
+    medio_risco: "#FFA500"
+    baixo_risco: "#4CAF50"
