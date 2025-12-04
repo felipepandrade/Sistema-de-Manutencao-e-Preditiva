@@ -116,6 +116,7 @@ def load_falhas_excel(
         'data_hora_inicio': 'data',
         'data_inicio': 'data',
         'equipamento_componente_envolvido': 'ativo',
+        'equipamentocomponente_envolvido': 'ativo',  # SEM underscore (variação do arquivo original)
         'equipamento': 'ativo',
         'componente': 'ativo',
         'instalacao_localizacao': 'instalacao',
@@ -130,7 +131,8 @@ def load_falhas_excel(
         'descricao_do_evento': 'descricao',
         'descricao': 'descricao',
         'id_evento': 'id_evento',
-        'id': 'id_evento'
+        'id': 'id_evento',
+        'prioridade': 'prioridade'  # Campo adicional do script original
     }
     
     # Aplicar mapeamento
@@ -193,6 +195,10 @@ def load_falhas_excel(
         'regional', 'tipo_manutencao', 'descricao', 'id_evento'
     ]
     
+    # Adicionar prioridade se existir
+    if 'prioridade' in df.columns:
+        final_cols.append('prioridade')
+    
     df_final = df[final_cols].copy()
     
     # Ordenar por ativo e data
@@ -211,11 +217,12 @@ def load_pcm_excel(
     Carrega arquivo Excel de Plano de Controle de Manutenção (PCM).
     
     MAPEAMENTO PRESERVADO DO SISTEMA LEGADO:
+    - Padronização de colunas ANTES do mapeamento
     - Mapeamento por ÍNDICE de colunas (posições fixas 18, 19, 20, 29)
-    - Fallback para mapeamento por nome
+    - Mapeamento geral adicional
+    - Fallback robusto para criação de ativo_unico
     
-    Args:
-        uploaded_file: Arquivo uploaded ou caminho
+    Args:uploaded_file: Arquivo uploaded ou caminho
         config: Configuração do sistema (opcional)
         
     Returns:
@@ -239,55 +246,105 @@ def load_pcm_excel(
     
     logger.info(f"Arquivo PCM carregado: {len(df)} linhas, {len(df.columns)} colunas")
     
-    # MAPEAMENTO POR ÍNDICE (preservado do legado)
-    # Tentativa 1: Usar índices fixos conhecidos
+    # Guardar colunas originais para mapeamento por índice
+    original_cols = df.columns.tolist()
+    
+    # MAPEAMENTO POR ÍNDICE com PADRONIZAÇÃO (do script original)
     try:
-        if len(df.columns) > 29:
-            df_mapped = pd.DataFrame({
-                'ativo': df.iloc[:, 18],  # Índice 18
-                'instalacao': df.iloc[:, 19],  # Índice 19
-                'modulo_envolvido': df.iloc[:, 20],  # Índice 20
-                'data_de_abertura': df.iloc[:, 29]  # Índice 29
-            })
-            logger.info("Mapeamento por índice aplicado com sucesso")
+        if len(original_cols) > 29:
+            # Criar mapeamento dinâmico padronizando os nomes
+            rename_map_dinamico = {
+                standardize_string(original_cols[19]): 'instalacao',  # Índice 19
+                standardize_string(original_cols[20]): 'sistema',     # Índice 20
+                standardize_string(original_cols[18]): 'local_de_servico',  # Índice 18
+                standardize_string(original_cols[29]): 'descricao_do_equipamento'  # Índice 29
+            }
+            
+            # Padronizar TODAS as colunas
+            df = standardize_columns(df)
+            
+            # Aplicar mapeamento dinâmico
+            df.rename(columns=rename_map_dinamico, inplace=True)
+            
+            logger.info("Mapeamento PCM por índice (com padronização) aplicado")
+            df_mapped = df.copy()
         else:
-            raise ValueError("Menos colunas que esperado, tentando mapeamento por nome")
+            raise ValueError("Menos de 30 colunas, tentando mapeamento por nome")
+            
     except Exception as e:
-        logger.warning(f"Mapeamento por índice falhou: {e}. Tentando por nome...")
+        logger.warning(f"Mapeamento PCM por índice falhou: {e}. Tentando por nome...")
         
         # Fallback: Mapeamento por nome
         df = standardize_columns(df)
-        
-        column_mapping = {
-            'equipamento': 'ativo',
-            'instalacao': 'instalacao',
-            'modulo': 'modulo_envolvido',
-            'data_abertura': 'data_de_abertura',
-            'data': 'data_de_abertura'
-        }
-        
         df_mapped = df.copy()
-        for old_col, new_col in column_mapping.items():
-            if old_col in df_mapped.columns and new_col not in df_mapped.columns:
-                df_mapped[new_col] = df_mapped[old_col]
     
-    # Verificar colunas essenciais
-    required_cols = ['ativo', 'instalacao', 'modulo_envolvido', 'data_de_abertura']
-    missing_cols = [col for col in required_cols if col not in df_mapped.columns]
+    # Mapeamento geral adicional (do script original)
+    rename_map_geral = {
+        'tipo': 'tipo_manutencao',
+        'data_da_solicitacao': 'data_de_abertura',
+        'data_abertura': 'data_de_abertura',
+        'data_solicitacao': 'data_de_abertura',
+        'equipamento': 'equipamento_original_j',
+        'status': 'status_da_ordem',
+        'descricao': 'descricao'
+    }
     
-    if missing_cols:
-        logger.error(f"Colunas PCM faltando: {missing_cols}")
-        raise ValueError(f"Colunas PCM não encontradas: {missing_cols}")
+    # Aplicar apenas colunas existentes
+    actual_rename = {k: v for k, v in rename_map_geral.items() if k in df_mapped.columns}
+    df_mapped.rename(columns=actual_rename, inplace=True)
     
-    # Converter data
-    df_mapped['data_de_abertura'] = pd.to_datetime(df_mapped['data_de_abertura'], errors='coerce')
+    # Criar ativo_unico com FALLBACKS robustos (do script original)
+    if all(col in df_mapped.columns for col in ['instalacao', 'sistema', 'descricao_do_equipamento']):
+        # Método 1: Instalação + Sistema + Descrição
+        df_mapped['instalacao'] = df_mapped['instalacao'].astype(str).fillna('')
+        df_mapped['sistema'] = df_mapped['sistema'].astype(str).fillna('')
+        df_mapped['descricao_do_equipamento'] = df_mapped['descricao_do_equipamento'].astype(str).fillna('')
+        df_mapped['ativo_unico'] = (
+            df_mapped['instalacao'] + ' - ' +
+            df_mapped['sistema'] + ' - ' +
+            df_mapped['descricao_do_equipamento']
+        )
+        # Aliases
+        df_mapped['modulo_envolvido'] = df_mapped['sistema']
+        df_mapped['ativo'] = df_mapped['descricao_do_equipamento']
+        
+    elif all(col in df_mapped.columns for col in ['sistema', 'descricao_do_equipamento']):
+        # Fallback 1: Sem instalação
+        df_mapped['sistema'] = df_mapped['sistema'].astype(str).fillna('')
+        df_mapped['descricao_do_equipamento'] = df_mapped['descricao_do_equipamento'].astype(str).fillna('')
+        df_mapped['ativo_unico'] = (
+            df_mapped['sistema'] + ' - ' +
+            df_mapped['descricao_do_equipamento']
+        )
+        df_mapped['instalacao'] = 'N/A'
+        df_mapped['modulo_envolvido'] = df_mapped['sistema']
+        df_mapped['ativo'] = df_mapped['descricao_do_equipamento']
+        
+    elif all(col in df_mapped.columns for col in ['instalacao', 'modulo_envolvido', 'ativo']):
+        # Fallback 2: Colunas já padronizadas
+        df_mapped['ativo_unico'] = (
+            df_mapped['instalacao'].astype(str) + ' - ' +
+            df_mapped['modulo_envolvido'].astype(str) + ' - ' +
+            df_mapped['ativo'].astype(str)
+        )
+    else:
+        logger.error(f"Estrutura PCM não reconhecida. Colunas: {list(df_mapped.columns)}")
+        raise ValueError("Não foi possível criar ativo_unico para PCM")
     
-    # Criar ativo_unico
-    df_mapped['ativo_unico'] = (
-        df_mapped['instalacao'].astype(str) + ' - ' +
-        df_mapped['modulo_envolvido'].astype(str) + ' - ' +
-        df_mapped['ativo'].astype(str)
-    )
+    # Converter colunas de data
+    date_cols = [col for col in df_mapped.columns if 'data' in col.lower()]
+    for col in date_cols:
+        df_mapped[col] = pd.to_datetime(df_mapped[col], errors='coerce')
+    
+    # Garantir coluna data_de_abertura
+    if 'data_de_abertura' not in df_mapped.columns:
+        data_col = next((col for col in date_cols if col in df_mapped.columns), None)
+        if data_col:
+            df_mapped['data_de_abertura'] = df_mapped[data_col]
+            logger.info(f"Usando {data_col} como data_de_abertura")
+        else:
+            logger.warning("Nenhuma coluna de data encontrada no PCM")
+            df_mapped['data_de_abertura'] = pd.NaT
     
     # Adicionar colunas opcionais
     if 'tipo_manutencao' not in df_mapped.columns:
@@ -306,6 +363,7 @@ def load_pcm_excel(
     logger.info(f"✓ Dados PCM carregados: {len(df_final)} registros")
     
     return df_final
+
 
 
 def load_csv(
@@ -336,3 +394,133 @@ def load_csv(
             continue
     
     raise ValueError(f"Não foi possível ler o arquivo {file_path} com encodings: {encodings}")
+
+
+# =============================================================================
+# FUNÇÕES PARA ANÁLISE DE FALHAS (RCA) E PLANOS DE AÇÃO
+# =============================================================================
+
+# Configuração de arquivos para RCA e Planos de Ação
+FILE_CONFIG = {
+    'analise_falhas': {
+        'sheet_name': 0,
+        'skiprows': 8,
+        'column_map': {
+            '% concluída': 'progresso',
+            'Atribuída a': 'responsavel',
+            'Nome': 'tarefa'
+        }
+    },
+    'plano_acao': {
+        'sheet_name': 0,
+        'skiprows': 0,
+        'column_map': {
+            'Status da Ação': 'status',
+            'Responsável pela Execução': 'responsavel',
+            'Término planejado': 'prazo'
+        }
+    }
+}
+
+
+def _load_and_process_file(uploaded_file, config, file_type_name):
+    """
+    Função genérica para carregar e processar arquivo Excel (RCA/Planos).
+    
+    Args:
+        uploaded_file: Arquivo Excel (Streamlit UploadedFile ou path)
+        config: Configuração com sheet_name, skiprows, column_map
+        file_type_name: Nome do tipo de arquivo (para mensagens)
+        
+    Returns:
+        DataFrame processado ou vazio se erro
+    """
+    if not uploaded_file:
+        return pd.DataFrame()
+    
+    try:
+        # Ler Excel
+        df = pd.read_excel(
+            uploaded_file,
+            sheet_name=config.get('sheet_name', 0),
+            skiprows=config.get('skiprows', 0),
+            header=0
+        )
+        
+        logger.info(f"{file_type_name}: {len(df)} linhas, {len(df.columns)} colunas")
+        
+        # Padronizar colunas
+        df_std = df.copy()
+        df_std = standardize_columns(df_std)
+        
+        # Mapear colunas
+        column_map = config['column_map']
+        rename_map = {
+            standardize_string(original_name): final_name
+            for original_name, final_name in column_map.items()
+        }
+        
+        df_std.rename(columns=rename_map, inplace=True)
+        
+        # Verificar colunas esperadas
+        final_expected_cols = list(column_map.values())
+        missing_cols = [col for col in final_expected_cols if col not in df_std.columns]
+        
+        if missing_cols:
+            logger.error(f"{file_type_name}: Colunas essenciais não encontradas: {', '.join(missing_cols)}")
+            return pd.DataFrame()
+        
+        logger.info(f"✓ {file_type_name} carregado com sucesso")
+        return df_std
+    
+    except Exception as e:
+        logger.error(f"Erro ao processar {file_type_name}: {e}")
+        return pd.DataFrame()
+
+
+def get_analise_df(uploaded_file):
+    """
+    Processa o arquivo de análise de falhas (RCA).
+    
+    Configuração:
+    - skiprows=8 (pula cabeçalho)
+    - Mapeia: '% concluída' → 'progresso'
+              'Atribuída a' → 'responsavel'
+              'Nome' → 'tarefa'
+    
+    Args:
+        uploaded_file: Arquivo Excel de análise
+        
+    Returns:
+        DataFrame com colunas: progresso, responsavel, tarefa
+    """
+    logger.info("Carregando arquivo de Análise de Falhas...")
+    return _load_and_process_file(
+        uploaded_file, 
+        FILE_CONFIG['analise_falhas'], 
+        "Análise de Falhas"
+    )
+
+
+def get_plano_df(uploaded_file):
+    """
+    Processa o arquivo de plano de ação.
+    
+    Configuração:
+    - skiprows=0 (sem pular linhas)
+    - Mapeia: 'Status da Ação' → 'status'
+              'Responsável pela Execução' → 'responsavel'
+              'Término planejado' → 'prazo'
+    
+    Args:
+        uploaded_file: Arquivo Excel de plano de ação
+        
+    Returns:
+        DataFrame com colunas: status, responsavel, prazo
+    """
+    logger.info("Carregando arquivo de Plano de Ação...")
+    return _load_and_process_file(
+        uploaded_file, 
+        FILE_CONFIG['plano_acao'], 
+        "Plano de Ação"
+    )
