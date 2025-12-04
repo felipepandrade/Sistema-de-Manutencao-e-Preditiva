@@ -325,10 +325,23 @@ else:
                             st.info("💡 Tente retreinar os modelos na aba '🧠 Treinamento'.")
                         else:
                             df_predictions = predictor.predict(df_features)
-                            st.success(f"✓ Predições geradas para {len(df_predictions)} ativos")
                             
-                            # Guardar no session_state para outras abas
-                            st.session_state['df_predictions'] = df_predictions
+                            # Validar estrutura das predições
+                            if df_predictions.empty:
+                                st.error("❌ Predições geradas estão vazias.")
+                                st.info("💡 **Possível causa:** Nenhum ativo válido para predição.")
+                                logger.error("DataFrame de predições vazio após predict()")
+                                df_predictions = None
+                            elif 'ativo_unico' not in df_predictions.columns:
+                                st.error("❌ Estrutura de predições inválida.")
+                                st.info("💡 **Solução:** Retreine os modelos na aba '🧠 Treinamento'.")
+                                logger.error(f"Colunas inválidas em predições: {list(df_predictions.columns)}")
+                                df_predictions = None
+                            else:
+                                st.success(f"✓ Predições geradas para {len(df_predictions)} ativos")
+                                
+                                # Guardar no session_state para outras abas
+                                st.session_state['df_predictions'] = df_predictions
                     
                     except Exception as e:
                         st.error(f"❌ Erro ao gerar predições: {e}")
@@ -369,6 +382,21 @@ else:
                     # Filtrar dados
                     classe_col = f'Classe_{horizonte_filter}d'
                     prob_col = f'ProbML_Media_{horizonte_filter}d'
+                    
+                    # Verificar se colunas existem
+                    if classe_col not in df_predictions.columns:
+                        st.error(f"❌ Coluna '{classe_col}' não encontrada nas predições.")
+                        st.warning("**Possível causa:** Modelos não geraram classificações de risco.")
+                        st.info("💡 **Solução:** Retreine os modelos na aba '🧠 Treinamento'.")
+                        logger.error(f"Coluna {classe_col} não encontrada. Colunas disponíveis: {list(df_predictions.columns)}")
+                        st.stop()
+                    
+                    if prob_col not in df_predictions.columns:
+                        st.error(f"❌ Coluna '{prob_col}' não encontrada nas predições.")
+                        st.warning("**Possível causa:** Modelos não geraram probabilidades.")
+                        st.info("💡 **Solução:** Retreine os modelos na aba '🧠 Treinamento'.")
+                        logger.error(f"Coluna {prob_col} não encontrada. Colunas disponíveis: {list(df_predictions.columns)}")
+                        st.stop()
                     
                     df_filtered = df_predictions[df_predictions[classe_col].isin(risco_filter)].copy()
                     df_filtered = df_filtered.sort_values(prob_col, ascending=False).head(n_show)

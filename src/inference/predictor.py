@@ -161,6 +161,12 @@ class PredictorPipeline:
         
         logger.info(f"Predições geradas para {len(df_predictions)} ativos")
         
+        # Debug: Logar colunas geradas
+        if not df_predictions.empty:
+            logger.info(f"Colunas geradas nas predições: {list(df_predictions.columns)}")
+        else:
+            logger.warning("DataFrame de predições está vazio - nenhum ativo processado com sucesso")
+        
         return df_predictions
     
     def _classify_risk(self, prob: float) -> str:
