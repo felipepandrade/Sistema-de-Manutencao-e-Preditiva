@@ -47,11 +47,79 @@ st.markdown(f"**Versão {config['project']['version']}** | Análise Preditiva de
 # Sidebar
 st.sidebar.header("📁 Carregar Dados")
 
+# Inicializar session_state para os DataFrames
+if 'falhas_df' not in st.session_state:
+    st.session_state.falhas_df = pd.DataFrame()
+if 'pcm_df' not in st.session_state:
+    st.session_state.pcm_df = pd.DataFrame()
+if 'analise_df' not in st.session_state:
+    st.session_state.analise_df = pd.DataFrame()
+if 'plano_df' not in st.session_state:
+    st.session_state.plano_df = pd.DataFrame()
+
+st.sidebar.markdown("Faça o upload dos arquivos de dados para análise.")
+
+# 1. Upload de Ocorrências (Falhas) - OBRIGATÓRIO
 uploaded_file = st.sidebar.file_uploader(
-    "Selecione o arquivo Excel de falhas",
+    "1. Ocorrências (Falhas)",
     type=['xlsx', 'xls'],
-    help="Arquivo deve conter histórico de falhas dos equipamentos"
+    help="Arquivo deve conter histórico de falhas dos equipamentos",
+    key='upload_falhas'
 )
+
+# 2. Upload de PCM (Ordens de Serviço) - OPCIONAL
+uploaded_pcm = st.sidebar.file_uploader(
+    "2. Ordens de Serviço (PCM)",
+    type=['xlsx'],
+    help="Arquivo de Plano de Controle de Manutenção",
+    key='upload_pcm'
+)
+
+# 3. Upload de Análise de Falhas (RCA) - OPCIONAL
+uploaded_analise = st.sidebar.file_uploader(
+    "3. Análise de Falhas (RCA)",
+    type=['xlsx'],
+    help="Arquivo de análise de causa raiz",
+    key='upload_analise'
+)
+
+# 4. Upload de Planos de Ação - OPCIONAL
+uploaded_plano = st.sidebar.file_uploader(
+    "4. Planos de Ação",
+    type=['xlsx'],
+    help="Arquivo de planos de ação para falhas",
+    key='upload_plano'
+)
+
+st.sidebar.divider()
+
+# Processar arquivos carregados
+from src.data import load_pcm_excel, get_analise_df, get_plano_df
+
+if uploaded_pcm:
+    try:
+        st.session_state.pcm_df = load_pcm_excel(uploaded_pcm)
+        if not st.session_state.pcm_df.empty:
+            st.sidebar.success("✓ PCM carregado")
+    except Exception as e:
+        st.sidebar.error(f"Erro ao carregar PCM: {e}")
+
+if uploaded_analise:
+    try:
+        st.session_state.analise_df = get_analise_df(uploaded_analise)
+        if not st.session_state.analise_df.empty:
+            st.sidebar.success("✓ Análise de Falhas carregada")
+    except Exception as e:
+        st.sidebar.error(f"Erro ao carregar Análise: {e}")
+
+if uploaded_plano:
+    try:
+        st.session_state.plano_df = get_plano_df(uploaded_plano)
+        if not st.session_state.plano_df.empty:
+            st.sidebar.success("✓ Plano de Ação carregado")
+    except Exception as e:
+        st.sidebar.error(f"Erro ao carregar Plano: {e}")
+
 
 # Opções
 st.sidebar.header("⚙️ Configurações")
