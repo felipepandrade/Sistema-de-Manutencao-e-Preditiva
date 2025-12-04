@@ -19,31 +19,17 @@ logger = get_logger(__name__)
 
 def standardize_string(text: str) -> str:
     """
-    Padroniza string: remove acentos, converte para minúsculas, remove espaços extras.
+    Normaliza uma string: converte para minúsculas, remove acentos,
+    caracteres especiais e substitui espaços por underscores.
     
-    Args:
-        text: String a padronizar
-        
-    Returns:
-        String padronizada
-        
-    Example:
-        >>> standardize_string("Data e Hora de Início")
-        'data_e_hora_de_inicio'
+    VERSÃO EXATA DO SCRIPT ORIGINAL (_standardize_string).
     """
-    if not isinstance(text, str):
-        return str(text).lower().strip()
-    
-    # Remover acentos
-    nfd_form = unicodedata.normalize('NFD', text)
-    text_without_accents = ''.join(char for char in nfd_form if unicodedata.category(char) != 'Mn')
-    
-    # Minúsculas e substituir espaços por underscores
-    text_clean = text_without_accents.lower().strip()
-    text_clean = re.sub(r'[\s/\\]+', '_', text_clean)
-    text_clean = re.sub(r'[^\w_]', '', text_clean)
-    
-    return text_clean
+    if pd.isna(text):
+        return ""
+    text_str = str(text)
+    normalized_text = unicodedata.normalize('NFD', text_str).encode('ascii', 'ignore').decode('utf-8')
+    clean_text = re.sub(r'[^a-zA-Z0-9\s]', '', normalized_text.lower().strip())
+    return re.sub(r'\s+', '_', clean_text)
 
 
 def standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
@@ -68,8 +54,11 @@ def load_falhas_excel(
     """
     Carrega arquivo Excel de ocorrências de falhas.
     
-    MAPEAMENTO PRESERVADO DO SISTEMA LEGADO:
-    - Mapeamento por nome exato de colunas
+    LÓGICA PRESERVADA DO SCRIPT ORIGINAL (get_falhas_df):
+    - Padroniza colunas ANTES do mapeamento
+    - Renomeia APENAS colunas que existem
+    - Regional é coluna obrigatória
+    - Dropna nas colunas essenciais
     - Criação de ativo_unico = {instalacao} - {modulo_envolvido} - {ativo}
     
     Args:
@@ -77,136 +66,77 @@ def load_falhas_excel(
         config: Configuração do sistema (opcional)
         
     Returns:
-        DataFrame padronizado com colunas:
-        - ativo_unico: str (identificador único)
-        - data: datetime (timestamp da falha)
-        - instalacao: str
-        - modulo_envolvido: str
-        - ativo: str
-        - regional: str
-        - tipo_manutencao: str
-        - descricao: str
-        - id_evento: str
-        
-    Raises:
-        ValueError: Se colunas essenciais não encontradas
+        DataFrame padronizado ou vazio se erro
     """
-    logger.info("Carregando arquivo de falhas...")
+    if not uploaded_file:
+        return pd.DataFrame()
     
-    # Carregar Excel
     try:
-        if hasattr(uploaded_file, 'read'):
-            # Streamlit UploadedFile
-            df = pd.read_excel(uploaded_file)
-        else:
-            # Path
-            df = pd.read_excel(uploaded_file)
+        # Carregar Excel
+        df = pd.read_excel(uploaded_file, header=0)
+        logger.info(f"Arquivo carregado: {len(df)} linhas, {len(df.columns)} colunas")
+        
+        # Padronizar colunas
+        df = standardize_columns(df)
+        
+        # RENAME_MAP do script original
+        RENAME_MAP = {
+            'data_e_hora_de_inicio': 'data',
+            'descricao_do_evento': 'descricao',
+            'equipamentocomponente_envolvido': 'ativo',  # EXATAMENTE como no original
+            'id_evento': 'id_evento',
+            'regional': 'regional',
+            'tipo_de_ocorrencia': 'tipo_manutencao',
+            'instalacao_localizacao': 'instalacao',
+            'modulo_envolvido': 'modulo_envolvido',
+            'moduloenvolvido': 'modulo_envolvido',  # Variação SEM underscore
+            'prioridade': 'prioridade'
+        }
+        
+        # Renomeia APENAS colunas existentes (CRÍTICO - do original)
+        actual_rename_map = {k: v for k, v in RENAME_MAP.items() if k in df.columns}
+        df.rename(columns=actual_rename_map, inplace=True)
+        
+        # LOG para debug - mostrar colunas após padronização e rename
+        logger.info(f"Colunas após padronização e rename: {list(df.columns)}")
+        
+        # Verificar colunas essenciais (IGUAL ao original - COM regional obrigatório)
+        required_cols = ['data', 'ativo', 'instalacao', 'modulo_envolvido', 'regional']
+        missing = [col for col in required_cols if col not in df.columns]
+        
+        if missing:
+            error_msg = f"Erro no arquivo de Ocorrências: Colunas essenciais não encontradas: {', '.join(missing)}."
+            logger.error(error_msg)
+            logger.info(f"Colunas disponíveis após processamento: {list(df.columns)}")
+            # Retornar DataFrame vazio (como no original) em vez de raise
+            return pd.DataFrame()
+        
+        # Remover código de criação automática de regional (ela é obrigatória)
+
+        
+        # Converter data
+        df['data'] = pd.to_datetime(df['data'], errors='coerce')
+        
+        # Dropna nas colunas essenciais (IGUAL ao original)
+        df.dropna(subset=['data', 'ativo', 'instalacao', 'modulo_envolvido'], inplace=True)
+        
+        # Limpar strings (IGUAL ao original)
+        for col in ['ativo', 'instalacao', 'modulo_envolvido', 'regional']:
+            if col in df.columns:
+                df[col] = df[col].astype(str).str.strip()
+        
+        # Criar ativo_unico (IGUAL ao original)
+        df['ativo_unico'] = df['instalacao'] + " - " + df['modulo_envolvido'] + " - " + df['ativo']
+        
+        logger.info(f"✓ Dados de falhas carregados: {len(df)} registros, {df['ativo_unico'].nunique()} ativos únicos")
+        
+        return df
+        
     except Exception as e:
-        logger.error(f"Erro ao ler Excel: {e}")
-        raise
-    
-    logger.info(f"Arquivo carregado: {len(df)} linhas, {len(df.columns)} colunas")
-    
-    # Padronizar nomes de colunas
-    df = standardize_columns(df)
-    
-    # Mapeamento de colunas (preservado do sistema legado)
-    column_mapping = {
-        'data_e_hora_de_inicio': 'data',
-        'data_hora_inicio': 'data',
-        'data_inicio': 'data',
-        'equipamento_componente_envolvido': 'ativo',
-        'equipamentocomponente_envolvido': 'ativo',  # SEM underscore (variação do arquivo original)
-        'equipamento': 'ativo',
-        'componente': 'ativo',
-        'instalacao_localizacao': 'instalacao',
-        'instalacao': 'instalacao',
-        'localizacao': 'instalacao',
-        'modulo_envolvido': 'modulo_envolvido',
-        'modulo': 'modulo_envolvido',
-        'regional': 'regional',
-        'tipo_de_ocorrencia': 'tipo_manutencao',
-        'tipo_ocorrencia': 'tipo_manutencao',
-        'tipo': 'tipo_manutencao',
-        'descricao_do_evento': 'descricao',
-        'descricao': 'descricao',
-        'id_evento': 'id_evento',
-        'id': 'id_evento',
-        'prioridade': 'prioridade'  # Campo adicional do script original
-    }
-    
-    # Aplicar mapeamento
-    for old_col, new_col in column_mapping.items():
-        if old_col in df.columns and new_col not in df.columns:
-            df[new_col] = df[old_col]
-    
-    # Verificar colunas essenciais
-    required_cols = ['data', 'ativo', 'instalacao', 'modulo_envolvido']
-    missing_cols = [col for col in required_cols if col not in df.columns]
-    
-    if missing_cols:
-        logger.error(f"Colunas essenciais faltando: {missing_cols}")
-        logger.info(f"Colunas disponíveis: {list(df.columns)}")
-        raise ValueError(
-            f"Colunas essenciais não encontradas: {missing_cols}.\n"
-            f"Verifique se o arquivo possui as colunas corretas."
-        )
-    
-    # Converter data
-    df['data'] = pd.to_datetime(df['data'], errors='coerce')
-    
-    # Remover linhas com data inválida
-    invalid_dates = df['data'].isnull().sum()
-    if invalid_dates > 0:
-        logger.warning(f"Removendo {invalid_dates} linhas com data inválida")
-        df = df[df['data'].notna()].copy()
-    
-    # Limpar strings
-    string_cols = ['ativo', 'instalacao', 'modulo_envolvido']
-    for col in string_cols:
-        if col in df.columns:
-            df[col] = df[col].astype(str).str.strip()
-    
-    # Criar ativo_unico (CRÍTICO - preservado do legado)
-    # Formato: {instalacao} - {modulo_envolvido} - {ativo}
-    df['ativo_unico'] = (
-        df['instalacao'].astype(str) + ' - ' +
-        df['modulo_envolvido'].astype(str) + ' - ' +
-        df['ativo'].astype(str)
-    )
-    
-    # Preencher colunas opcionais se não existirem
-    if 'regional' not in df.columns:
-        df['regional'] = 'N/A'
-    
-    if 'tipo_manutencao' not in df.columns:
-        df['tipo_manutencao'] = 'Corretiva'
-    
-    if 'descricao' not in df.columns:
-        df['descricao'] = ''
-    
-    if 'id_evento' not in df.columns:
-        # Criar ID baseado em índice
-        df['id_evento'] = [f"EV{i:06d}" for i in range(len(df))]
-    
-    # Selecionar colunas finais
-    final_cols = [
-        'ativo_unico', 'data', 'instalacao', 'modulo_envolvido', 'ativo',
-        'regional', 'tipo_manutencao', 'descricao', 'id_evento'
-    ]
-    
-    # Adicionar prioridade se existir
-    if 'prioridade' in df.columns:
-        final_cols.append('prioridade')
-    
-    df_final = df[final_cols].copy()
-    
-    # Ordenar por ativo e data
-    df_final = df_final.sort_values(['ativo_unico', 'data']).reset_index(drop=True)
-    
-    logger.info(f"✓ Dados de falhas carregados: {len(df_final)} registros, {df_final['ativo_unico'].nunique()} ativos únicos")
-    
-    return df_final
+        error_msg = f"Erro crítico ao processar arquivo de Ocorrências: {e}"
+        logger.error(error_msg)
+        return pd.DataFrame()
+
 
 
 def load_pcm_excel(

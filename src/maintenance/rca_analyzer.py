@@ -91,9 +91,8 @@ class RCAAnalyzer:
             feature_names
         )
         
-        # 5. Ranquear causas p
-
-róveis
+        
+        # 5. Ranquear causas prováveis
         root_causes = self._rank_root_causes(anomalies, similar_failures)
         
         # 6. Gerar recomendações

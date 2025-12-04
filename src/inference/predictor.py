@@ -32,7 +32,12 @@ class PredictorPipeline:
         self.metadata = {}
         
         if config:
-            self._load_models()
+            try:
+                self._load_models()
+            except Exception as e:
+                logger.error(f"Erro ao carregar modelos na inicialização: {e}")
+                # Não propagar o erro, mas logar para o usuário saber o que aconteceu
+                # self.models ficará vazio, e o predict() retornará erro mais claro
     
     def _load_models(self):
         """Carrega modelos e metadados da versão especificada."""
@@ -80,7 +85,13 @@ class PredictorPipeline:
             DataFrame com predições por ativo e horizonte
         """
         if not self.models:
-            raise ValueError("Modelos não carregados. Execute _load_models() primeiro.")
+            error_msg = (
+                "Nenhum modelo carregado. Possíveis causas:\n"
+                "1. Nenhum modelo foi treinado ainda - Execute o treinamento primeiro\n"
+                "2. Modelos não foram encontrados no diretório especificado\n"
+                "3. Erro ao carregar modelos - Verifique os logs acima"
+            )
+            raise ValueError(error_msg)
         
         feature_names = self.metadata['features']
         ativos_unicos = df_features['ativo_unico'].unique()

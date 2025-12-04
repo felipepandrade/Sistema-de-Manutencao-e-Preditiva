@@ -185,35 +185,14 @@ if uploaded_file is None:
 else:
     # Processar dados
     try:
-        # Validar arquivo antes de processar
-        with st.spinner("📥 Validando arquivo..."):
-            try:
-                # Tentar ler com pandas primeiro
-                if uploaded_file.name.endswith('.xlsx'):
-                    temp_df = pd.read_excel(uploaded_file, nrows=5)
-                else:
-                    temp_df = pd.read_excel(uploaded_file, nrows=5, engine='xlrd')
-                
-                # Resetar file pointer
-                uploaded_file.seek(0)
-                
-                # Verificar colunas essenciais
-                required_cols = ['data', 'ativo']
-                missing_cols = [col for col in required_cols if col not in temp_df.columns]
-                
-                if missing_cols:
-                    st.error(f"❌ Arquivo inválido! Colunas obrigatórias faltando: {', '.join(missing_cols)}")
-                    st.info("💡 O arquivo deve conter pelo menos as colunas: **data**, **ativo**, **instalacao**, **modulo_envolvido**")
-                    st.stop()
-                    
-            except Exception as e:
-                st.error(f"❌ Erro ao ler arquivo: {e}")
-                st.info("💡 Certifique-se de que o arquivo é um Excel válido (.xlsx ou .xls)")
-                st.stop()
-        
-        # Carregar dados
+        # Carregar dados (validação é feita dentro de load_falhas_excel)
         with st.spinner("📥 Carregando dados..."):
             df_raw = load_falhas_excel(uploaded_file, config)
+        
+        # Verificar se carregamento foi bem-sucedido
+        if df_raw.empty:
+            st.error("❌ Erro ao carregar arquivo. Verifique os logs no terminal para detalhes.")
+            st.stop()
         
         st.success(f"✓ Dados carregados: {len(df_raw)} registros, {df_raw['ativo_unico'].nunique()} ativos únicos")
         
@@ -244,6 +223,51 @@ else:
                 st.write("**Features geradas:**")
                 st.write(feature_names[:10])  # Primeiras 10
         
+        # Verificar se existem modelos treinados
+        models_dir = Path(config['paths']['models'])
+        latest_path = models_dir / 'latest'
+        models_exist = latest_path.exists() and len(list(latest_path.glob('*.pkl'))) > 0
+        
+        if not models_exist:
+            st.info("ℹ️ Nenhum modelo treinado encontrado.")
+            
+            col1, col2 = st.columns([1, 2])
+            with col1:
+                if st.button("🚀 Treinar Modelos Agora", type="primary"):
+                    with st.spinner("Treinando modelos... Isso pode levar alguns minutos."):
+                        import subprocess
+                        import sys
+                        import tempfile
+                        
+                        try:
+                            # Salvar df_raw temporariamente como Excel para o cli_train usar
+                            temp_file = tempfile.NamedTemporaryFile(mode='wb', suffix='.xlsx', delete=False)
+                            df_raw.to_excel(temp_file.name, index=False)
+                            temp_file.close()
+                            
+                            # Executar cli_train.py com argumento --data
+                            result = subprocess.run(
+                                [sys.executable, "cli_train.py", "--data", temp_file.name],
+                                capture_output=True,
+                                text=True,
+                                cwd=Path(__file__).parent
+                            )
+                            
+                            # Limpar arquivo temporário
+                            Path(temp_file.name).unlink(missing_ok=True)
+                            
+                            if result.returncode == 0:
+                                st.success("✓ Treinamento concluído com sucesso!")
+                                st.rerun()  # Recarregar para usar novos modelos
+                            else:
+                                st.error(f"❌ Erro no treinamento: {result.stderr}")
+                                st.code(result.stdout)
+                        except Exception as e:
+                            st.error(f"❌ Erro ao executar treinamento: {e}")
+            
+            with col2:
+                st.markdown("Ou vá para a aba **🧠 Treinamento** para mais opções.")
+        
         # Tabs principais
         tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
             "📊 Predições", 
@@ -260,19 +284,32 @@ else:
         with tab1:
             st.header("Predições de Falhas")
             
-            if use_cached_model:
-                models_dir = Path(config['paths']['models'])
-                latest_path = models_dir / 'latest'
-                
-                if not latest_path.exists():
-                    st.warning("⚠️ Nenhum modelo treinado encontrado. Execute o treinamento na aba '🧠 Treinamento'.")
-                else:
-                    # Carregar modelo e predizer
-                    with st.spinner("🤖 Gerando predições..."):
+            if not models_exist:
+                st.warning("⚠️ Nenhum modelo treinado encontrado. Execute o treinamento na aba '🧠 Treinamento' ou clique no botão acima.")
+            elif use_cached_model:
+                # Carregar modelo e predizer
+                with st.spinner("🤖 Gerando predições..."):
+                    try:
                         predictor = PredictorPipeline(model_version='latest', config=config)
-                        df_predictions = predictor.predict(df_features)
+                        
+                        if not predictor.models:
+                            st.error("❌ Erro ao carregar modelos. Verifique os logs.")
+                            st.info("💡 Tente retreinar os modelos na aba '🧠 Treinamento'.")
+                        else:
+                            df_predictions = predictor.predict(df_features)
+                            st.success(f"✓ Predições geradas para {len(df_predictions)} ativos")
+                            
+                            # Guardar no session_state para outras abas
+                            st.session_state['df_predictions'] = df_predictions
                     
-                    st.success(f"✓ Predições geradas para {len(df_predictions)} ativos")
+                    except Exception as e:
+                        st.error(f"❌ Erro ao gerar predições: {e}")
+                        st.info("💡 Tente retreinar os modelos na aba '🧠 Treinamento'.")
+                        df_predictions = None
+                
+                # Continuar apenas se predições foram geradas
+                if 'df_predictions' in st.session_state and st.session_state['df_predictions'] is not None:
+                    df_predictions = st.session_state['df_predictions']
                     
                     # Filtros
                     col1, col2, col3 = st.columns(3)
@@ -759,7 +796,7 @@ else:
                     "Threshold para Alto Risco",
                     min_value=0.0,
                     max_value=1.0,
-                    value=float(config['inference']['thresholds']['alto_risco']),
+                    value=float(config['inference']['risk_thresholds']['alto']),
                     step=0.05
                 )
             
