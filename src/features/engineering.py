@@ -95,10 +95,24 @@ class FeatureEngineeringPipeline:
         # Tratamento de valores faltantes
         df = self._tratar_valores_faltantes(df)
         
-        # Extrair nomes de features (excluir metadados)
-        metadata_cols = ['ativo_unico', 'data', 'instalacao', 'modulo_envolvido', 
-                        'ativo', 'regional', 'descricao', 'id_evento', 'tipo_manutencao']
-        self.feature_names_ = [c for c in df.columns if c not in metadata_cols 
+        # Extrair nomes de features (apenas numéricas e excluindo metadados)
+        metadata_cols = [
+            'ativo_unico', 'data', 'instalacao', 'modulo_envolvido', 'ativo', 
+            'regional', 'descricao', 'id_evento', 'tipo_manutencao',
+            'idevento', 'idmacrom', 'idticket', 'os', 'console', 'area',
+            'tipodeevento', 'origemdoevento', 'motivodoevento', 'dimensaoafetada',
+            'perdapotencial', 'dataehoradefim', 'analisedecausaraiz', 'prioridade',
+            'criteriosdeanalisedefalha', 'causasidentificadas', 'possiveissolucoes',
+            'statusdeanalise', 'houveindisponibilidadedotramodispsis', 'redundancia',
+            'obssobredisp', 'id', 'tef', 'base', 'grupo', 'associadoaocao',
+            'sobreaviso', 'responsavel', 'estudoesom', 'codigodaposicao', 'tipodevalvula'
+        ]
+        
+        # Selecionar apenas colunas numéricas
+        numeric_cols = df.select_dtypes(include=[np.number]).columns
+        
+        self.feature_names_ = [c for c in numeric_cols 
+                              if c not in metadata_cols 
                               and not c.startswith('falha_em_')]
         
         logger.info(f"Feature Engineering concluído: {len(self.feature_names_)} features criadas")

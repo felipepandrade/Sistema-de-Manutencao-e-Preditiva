@@ -17,11 +17,35 @@ import time
 # Adicionar src ao path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from src.utils.logging_config import load_config, get_logger
+from src.utils.logging_config import load_config, get_logger, setup_logging
 from src.data.loaders import load_falhas_excel
 from src.features.engineering import FeatureEngineeringPipeline
 from src.features.target_builder import create_multi_horizon_targets
 from src.inference.predictor import PredictorPipeline
+
+# Configurar logging (salva em outputs/logs/)
+logger = setup_logging(
+    log_file=Path("outputs/logs/app.log"),
+    log_level="INFO"
+)
+
+# Handler global de exceções não capturadas
+def handle_exception(exc_type, exc_value, exc_traceback):
+    """Captura exceções não tratadas e loga em arquivo."""
+    if issubclass(exc_type, KeyboardInterrupt):
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+        return
+    
+    logger.critical(
+        "Exceção não capturada",
+        exc_info=(exc_type, exc_value, exc_traceback)
+    )
+
+sys.excepthook = handle_exception
+
+logger.info("=" * 80)
+logger.info("APLICAÇÃO STREAMLIT INICIADA")
+logger.info("=" * 80)
 
 # Configuração da página
 st.set_page_config(
@@ -187,11 +211,15 @@ else:
     try:
         # Carregar dados (validação é feita dentro de load_falhas_excel)
         with st.spinner("📥 Carregando dados..."):
+            logger.info(f"Iniciando carregamento de arquivo: {uploaded_file.name}")
             df_raw = load_falhas_excel(uploaded_file, config)
+            logger.info(f"Arquivo carregado com sucesso: {len(df_raw)} registros")
         
         # Verificar se carregamento foi bem-sucedido
         if df_raw.empty:
-            st.error("❌ Erro ao carregar arquivo. Verifique os logs no terminal para detalhes.")
+            error_msg = "DataFrame vazio após carregamento. Verifique o formato do arquivo."
+            logger.error(error_msg)
+            st.error(f"❌ {error_msg}")
             st.stop()
         
         st.success(f"✓ Dados carregados: {len(df_raw)} registros, {df_raw['ativo_unico'].nunique()} ativos únicos")
@@ -921,11 +949,14 @@ else:
                             st.rerun()
     
     except Exception as e:
-        st.error(f"❌ Erro ao processar dados: {e}")
+        error_msg = f"Erro ao processar dados: {str(e)}"
+        logger.error(error_msg, exc_info=True)
+        st.error(f"❌ {error_msg}")
+        st.error("**Detalhes salvos em:** `outputs/logs/app_errors.log`")
         
-        with st.expander("Ver detalhes do erro"):
+        with st.expander("🔍 Ver detalhes técnicos do erro"):
             import traceback
-            st.code(traceback.format_exc())
+            st.code(traceback.format_exc(), language="python")
 
 # Footer
 st.markdown("---")

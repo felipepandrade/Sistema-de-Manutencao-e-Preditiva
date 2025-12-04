@@ -86,21 +86,43 @@ def save_model_artifacts(
     logger.info(f"Metadados salvos: {metadata_file}")
     
     # Criar/atualizar symlink 'latest'
+    # Criar/atualizar symlink 'latest'
     latest_path = models_dir / "latest"
-    if latest_path.exists():
-        if latest_path.is_symlink():
-            latest_path.unlink()
-        else:
-            shutil.rmtree(latest_path)
     
+    # Função auxiliar para remover diretório com retry
+    def remove_readonly(func, path, excinfo):
+        import os
+        import stat
+        os.chmod(path, stat.S_IWRITE)
+        func(path)
+        
+    if latest_path.exists():
+        try:
+            if latest_path.is_symlink():
+                latest_path.unlink()
+            else:
+                shutil.rmtree(latest_path, onerror=remove_readonly)
+        except Exception as e:
+            logger.warning(f"Não foi possível remover 'latest' antigo: {e}")
+            # Tentar renomear se não der para remover (workaround Windows)
+            try:
+                timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+                latest_path.rename(models_dir / f"latest_old_{timestamp}")
+            except Exception as e2:
+                logger.error(f"Falha crítica ao limpar 'latest': {e2}")
+
     try:
         # Windows requer privilégios para symlinks, usar cópia como fallback
-        latest_path.symlink_to(version, target_is_directory=True)
-        logger.info(f"Symlink 'latest' criado -> {version}")
-    except OSError:
-        # Fallback: copiar diretório
-        shutil.copytree(version_path, latest_path)
-        logger.warning(f"Symlink falhou, copiado para 'latest'")
+        # Tentar criar symlink apenas se tiver permissão
+        try:
+            latest_path.symlink_to(version, target_is_directory=True)
+            logger.info(f"Symlink 'latest' criado -> {version}")
+        except (OSError, AttributeError):
+            # Fallback: copiar diretório
+            shutil.copytree(version_path, latest_path)
+            logger.info(f"Symlink não suportado/permitido, diretório copiado para 'latest'")
+    except Exception as e:
+        logger.error(f"Erro ao criar 'latest': {e}")
     
     logger.info(f"✓ Artefatos salvos com sucesso: {version_path}")
     

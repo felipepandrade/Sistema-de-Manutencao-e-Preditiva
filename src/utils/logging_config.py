@@ -59,6 +59,7 @@ def setup_logging(
         log_file = Path(log_file)
         log_file.parent.mkdir(parents=True, exist_ok=True)
         
+        # Handler para todos os logs
         file_handler = logging.handlers.RotatingFileHandler(
             log_file,
             maxBytes=max_bytes,
@@ -68,6 +69,29 @@ def setup_logging(
         file_handler.setLevel(getattr(logging, log_level.upper()))
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
+        
+        # Handler DEDICADO apenas para ERROS (facilita debug)
+        error_log_file = log_file.parent / f"{log_file.stem}_errors.log"
+        error_handler = logging.handlers.RotatingFileHandler(
+            error_log_file,
+            maxBytes=max_bytes,
+            backupCount=backup_count,
+            encoding='utf-8'
+        )
+        error_handler.setLevel(logging.ERROR)  # Apenas ERROR e CRITICAL
+        
+        # Formato mais detalhado para erros (com traceback)
+        error_formatter = logging.Formatter(
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s\n"
+            "File: %(pathname)s:%(lineno)d\n"
+            "Function: %(funcName)s\n"
+            "%(message)s\n"
+            + "-" * 80
+        )
+        error_handler.setFormatter(error_formatter)
+        logger.addHandler(error_handler)
+        
+        logger.info(f"Logging configurado: {log_file} (geral) e {error_log_file} (apenas erros)")
     
     return logger
 
